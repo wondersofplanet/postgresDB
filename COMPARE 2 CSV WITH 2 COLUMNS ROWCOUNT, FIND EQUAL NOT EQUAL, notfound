@@ -1,0 +1,173 @@
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class CsvMerger {
+
+    public static void main(String[] args) {
+        String csvAPath = "C:\\testfolfer\\New folder\\ab.csv";
+        String csvBPath = "C:\\testfolfer\\New folder\\AB1.csv";
+        String outputCsvPath = "C:\\testfolfer\\New folder\\OUTPUT.csv";
+        String csvAName = getFileName(csvAPath);
+        String csvBName = getFileName(csvBPath);
+
+        int totalRows = 0;
+        int equalCount = 0;
+        int notEqualCount = 0;
+        int notFoundCount = 0; // General not found counter
+        int notFoundInAB1Count = 0; // Count for "not found in AB1"
+        int notFoundInABCount = 0; // Count for "not found in ab"
+
+        // Lists to hold relevant rows for statistics
+        List<String> notFoundInAB1Rows = new ArrayList<>();
+        List<String> notFoundInABRows = new ArrayList<>();
+        List<String> notEqualRows = new ArrayList<>(); // List for not equal comparisons
+
+        try {
+            Map<String, String> csvAMap = readCsvIntoMap(csvAPath);
+            Map<String, String> csvBMap = readCsvIntoMap(csvBPath);
+
+            BufferedWriter writer = new BufferedWriter(new FileWriter(outputCsvPath));
+            writer.write("Name," + csvAName + "," + csvBName + ",Comparison");
+            writer.newLine();
+
+            // Merge csvA and csvB with comparison
+            for (String key : csvAMap.keySet()) {
+                String valueA = csvAMap.get(key);
+                String valueB = csvBMap.getOrDefault(key, "not found"); // Default to "not found"
+
+                String comparison;
+                if (valueB.equals("not found")) {
+                    comparison = valueA + " not found in " + csvBName; // valueB not found
+                    notFoundInAB1Count++; // Increment count for not found in AB1
+                    notFoundCount++; // Increment general not found count
+                    notFoundInAB1Rows.add(key + ", " + valueA); // Add to relevant rows
+                } else if (valueA.equals("not found")) {
+                    comparison = "not found in " + csvAName; // valueA not found
+                    notFoundInABCount++; // Increment count for not found in ab
+                    notFoundCount++; // Increment general not found count
+                    notFoundInABRows.add(key + ", " + valueB); // Add to relevant rows
+                } else if (valueA.equals(valueB)) {
+                    comparison = "equal";
+                    equalCount++;
+                } else {
+                    comparison = "not equal"; // When values are different
+                    notEqualCount++; // Increment only if values are different
+                    notEqualRows.add(key + "," + valueA + "," + valueB); // Add to not equal rows
+                }
+
+                writer.write(key + "," + valueA + "," + valueB + "," + comparison);
+                writer.newLine();
+
+                // Update total rows count
+                totalRows++;
+            }
+
+            // Add remaining items from csvB
+            for (String key : csvBMap.keySet()) {
+                if (!csvAMap.containsKey(key)) {
+                    String valueB = csvBMap.get(key);
+                    String comparison = "not found in " + csvAName; // Key not in csvA
+                    writer.write(key + ",not found," + valueB + "," + comparison);
+                    writer.newLine();
+
+                    // Update statistics
+                    totalRows++;
+                    notFoundCount++; // Increment general not found count
+                    notFoundInABCount++; // Increment count for not found in ab
+                    notFoundInABRows.add(key + ", " + valueB); // Add to relevant rows
+                }
+            }
+
+            // Write statistics summary to output file
+            writer.newLine(); // Add an empty line before the summary
+            writer.write("Statistics Summary:");
+            writer.newLine();
+            writer.write("Total Rows," + totalRows);
+            writer.newLine();
+            writer.write("Equal Comparisons," + equalCount);
+            writer.newLine();
+            writer.write("Not Equal Comparisons," + notEqualCount); // Correctly count not equal comparisons
+            writer.newLine();
+            writer.write("Not Found Comparisons," + notFoundCount); // Add general not found count
+            writer.newLine();
+            writer.write("Not Found in " + csvBName + "," + notFoundInAB1Count); // Count for not found in AB1
+            writer.newLine();
+            for (String row : notFoundInAB1Rows) {
+                writer.write(row + " (not found in " + csvBName + ")");
+                writer.newLine();
+            }
+            writer.write("Not Found in " + csvAName + "," + notFoundInABCount); // Count for not found in ab
+            writer.newLine();
+            for (String row : notFoundInABRows) {
+                writer.write(row + " (not found in " + csvAName + ")");
+                writer.newLine();
+            }
+            writer.write("Not Equal Comparisons," + notEqualCount); // Count for not equal comparisons
+            writer.newLine();
+            for (String row : notEqualRows) {
+                writer.write(row + " (not equal)");
+                writer.newLine();
+            }
+
+            writer.close();
+            System.out.println("CSV merged successfully!");
+
+            // Print statistics summary to console
+            System.out.println("Statistics Summary:");
+            System.out.println("Total Rows: " + totalRows);
+            System.out.println("Equal Comparisons: " + equalCount);
+            System.out.println("Not Equal Comparisons: " + notEqualCount); // Print count for not equal comparisons
+            System.out.println("Not Found Comparisons: " + notFoundCount); // Print general not found count
+            System.out.println("Not Found in " + csvBName + ": " + notFoundInAB1Count); // Print count for not found in AB1
+            for (String row : notFoundInAB1Rows) {
+                System.out.println(row + " (not found in " + csvBName + ")");
+            }
+            System.out.println("Not Found in " + csvAName + ": " + notFoundInABCount); // Print count for not found in ab
+            for (String row : notFoundInABRows) {
+                System.out.println(row + " (not found in " + csvAName + ")");
+            }
+
+            // Open the output CSV file
+            openCsvFile(outputCsvPath);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void openCsvFile(String filePath) {
+        try {
+            // Open the output CSV file using the default application
+            java.awt.Desktop.getDesktop().open(new java.io.File(filePath));
+        } catch (IOException e) {
+            System.err.println("Failed to open the file: " + e.getMessage());
+        }
+    }
+
+    private static Map<String, String> readCsvIntoMap(String csvPath) throws IOException {
+        Map<String, String> map = new HashMap<>();
+        BufferedReader reader = new BufferedReader(new FileReader(csvPath));
+        String line;
+
+        while ((line = reader.readLine()) != null) {
+            String[] parts = line.split(",");
+            if (parts.length == 2) {
+                map.put(parts[0].trim(), parts[1].trim());
+            }
+        }
+
+        reader.close();
+        return map;
+    }
+
+    private static String getFileName(String filePath) {
+        return filePath.substring(filePath.lastIndexOf('\\') + 1, filePath.lastIndexOf('.')); // Changed to '\\' for Windows compatibility
+    }
+}
