@@ -1,0 +1,112 @@
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class CsvFolderComparator {
+
+    public static void main(String[] args) throws IOException {
+        // Hardcoded folder paths (you can modify these paths as required)
+    	String folder1Path = "C:\\testfolfer\\IAMfolder1";
+        String folder2Path = "C:\\testfolfer\\THISISfolder2";
+
+        // Get the folder names dynamically from the paths
+        String folder1Name = Paths.get(folder1Path).getFileName().toString();
+        String folder2Name = Paths.get(folder2Path).getFileName().toString();
+
+        File folder1 = new File(folder1Path);
+        File folder2 = new File(folder2Path);
+
+        // Get all CSV files from both folders
+        List<File> folder1CsvFiles = getCsvFiles(folder1);
+        List<File> folder2CsvFiles = getCsvFiles(folder2);
+
+        // Output file for the comparison results (overwrite if it exists)
+        String outputFilePath = "output.csv";
+        try (BufferedWriter outputWriter = new BufferedWriter(new FileWriter(outputFilePath))) {
+            // Track files that have already been processed
+            Set<String> processedFiles = new HashSet<>();
+
+            // Handle files in folder1
+            for (File file1 : folder1CsvFiles) {
+                String fileName = file1.getName();
+                File file2 = new File(folder2Path + "/" + fileName);
+
+                if (file2.exists()) {
+                    // Print row and column counts
+                    int[] file1Dimensions = getRowColumnCount(file1);
+                    int[] file2Dimensions = getRowColumnCount(file2);
+
+                    outputWriter.write("Comparing " + file1.getName() + ":\n");
+                    outputWriter.write("No. of rows, columns in " + file1.getName() + " in " + folder1Name + ": " + file1Dimensions[0] + " rows, " + file1Dimensions[1] + " columns\n");
+                    outputWriter.write("No. of rows, columns in " + file1.getName() + " in " + folder2Name + ": " + file2Dimensions[0] + " rows, " + file2Dimensions[1] + " columns\n");
+
+                    // If column numbers don't match, skip this file
+                    if (file1Dimensions[1] != file2Dimensions[1]) {
+                        outputWriter.write("Column numbers don't match. Skipping comparison for this file.\n\n");
+                        continue;
+                    }
+
+                    // Compare the two CSV files
+                    compareCsvFiles(file1, file2, folder1Name, folder2Name, outputWriter);
+                } else {
+                    // File exists in folder1 but not in folder2
+                    outputWriter.write(fileName + " is present in " + folder1Name + " but not in " + folder2Name + "\n");
+                }
+                processedFiles.add(fileName); // Add file to processed list
+            }
+
+            // Handle files in folder2 that haven't been processed yet
+            for (File file2 : folder2CsvFiles) {
+                String fileName = file2.getName();
+                if (!processedFiles.contains(fileName)) {
+                    // File exists in folder2 but not in folder1
+                    outputWriter.write(fileName + " is present in " + folder2Name + " but not in " + folder1Name + "\n");
+                }
+            }
+        }
+
+        System.out.println("Comparison completed. Results saved in " + outputFilePath);
+    }
+
+    // Get all CSV files in a folder
+    private static List<File> getCsvFiles(File folder) {
+        return Arrays.stream(Objects.requireNonNull(folder.listFiles()))
+                .filter(file -> file.isFile() && file.getName().endsWith(".csv"))
+                .collect(Collectors.toList());
+    }
+
+    // Get row and column counts for a CSV file
+    private static int[] getRowColumnCount(File csvFile) throws IOException {
+        List<String> rows = Files.readAllLines(csvFile.toPath());
+        int rowCount = rows.size();
+        int columnCount = rows.isEmpty() ? 0 : rows.get(0).split(",").length; // Assuming CSV is comma-separated
+        return new int[]{rowCount, columnCount};
+    }
+
+    // Compare two CSV files and write differences to output
+    private static void compareCsvFiles(File file1, File file2, String folder1Name, String folder2Name, BufferedWriter outputWriter) throws IOException {
+        List<String> rowsFile1 = Files.readAllLines(file1.toPath());
+        List<String> rowsFile2 = Files.readAllLines(file2.toPath());
+
+        outputWriter.write("Comparing " + file1.getName() + ":\n");
+
+        // Find rows present in file1 but not in file2
+        outputWriter.write("Rows present in " + file1.getName() + " in " + folder1Name + " but not in " + folder2Name + ":\n");
+        List<String> diff1 = new ArrayList<>(rowsFile1);
+        diff1.removeAll(rowsFile2);
+        for (String row : diff1) {
+            outputWriter.write(row + "\n");
+        }
+
+        // Find rows present in file2 but not in file1
+        outputWriter.write("\nRows present in " + file1.getName() + " in " + folder2Name + " but not in " + folder1Name + ":\n");
+        List<String> diff2 = new ArrayList<>(rowsFile2);
+        diff2.removeAll(rowsFile1);
+        for (String row : diff2) {
+            outputWriter.write(row + "\n");
+        }
+
+        outputWriter.write("\n");
+    }
+}
