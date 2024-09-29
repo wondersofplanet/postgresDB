@@ -1,0 +1,228 @@
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Scanner;
+
+public class PostgresDBOperations {
+    private static final String HOST = "localhost"; // Replace with your host
+    private static final String PORT = "5432";      // Replace with your port number
+    private static final String DATABASE = "postgres";  // Replace with your database name
+    private static final String USER = "postgres";  // Replace with your username
+    private static final String PASS = "admin";  // Replace with your password
+
+    public static void main(String[] args) throws IOException { // Declare IOException here
+        try (Connection conn = DriverManager.getConnection("jdbc:postgresql://" + HOST + ":" + PORT + "/" + DATABASE, USER, PASS)) {
+            System.out.println("Connected to the database successfully!");
+            Scanner scanner = new Scanner(System.in);
+
+            while (true) {
+                System.out.println("Select an option: ");
+                System.out.println("1) Extract tables only, order by name, as CSV");
+                System.out.println("2) Extract tables with row count as CSV, order by row count");
+                System.out.println("3) Get pg_dump for specific tables");
+                System.out.println("4) Get all rows as insert queries for hardcoded tables");
+                System.out.println("5) Get first 5 rows as insert queries for hardcoded tables");
+                System.out.println("6) Write a SQL query and save the output");
+                System.out.println("0) Exit");
+
+                int option = scanner.nextInt();
+                scanner.nextLine(); // Consume the newline
+
+                switch (option) {
+                    case 1:
+                        extractTables(conn);
+                        break;
+                    case 2:
+                        extractTablesWithRowCount(conn);
+                        break;
+                    case 3:
+                        pgDumpTables(conn, scanner);
+                        break;
+                    case 4:
+                        insertQueriesForHardcodedTables(conn, false);
+                        break;
+                    case 5:
+                        insertQueriesForHardcodedTables(conn, true);
+                        break;
+                    case 6:
+                        executeSqlQuery(conn, scanner);
+                        break;
+                    case 0:
+                        System.out.println("Exiting...");
+                        return;
+                    default:
+                        System.out.println("Invalid option. Please try again.");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void extractTables(Connection conn) {
+        try {
+            String query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(query)) {
+
+                BufferedWriter writer = new BufferedWriter(new FileWriter("tables.csv"));
+                writer.write("Table Name\n");
+
+                while (rs.next()) {
+                    String tableName = rs.getString("table_name");
+                    writer.write(tableName + "\n");
+                }
+                writer.close();
+                System.out.println("Extracted table names to CSV: tables.csv");
+
+                // Open the CSV file
+                openFile("tables.csv");
+            }
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void extractTablesWithRowCount(Connection conn) {
+        try {
+            String query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(query)) {
+
+                BufferedWriter writer = new BufferedWriter(new FileWriter("tables_with_row_count.csv"));
+                writer.write("Table Name,Row Count\n");
+
+                while (rs.next()) {
+                    String tableName = rs.getString("table_name");
+                    
+                    // Construct the SQL query to count rows for the current table
+                    String countQuery = "SELECT COUNT(*) AS row_count FROM \"" + tableName + "\"";
+                    try (Statement countStmt = conn.createStatement();
+                         ResultSet countRs = countStmt.executeQuery(countQuery)) {
+
+                        countRs.next(); // Move to the first row
+                        int rowCount = countRs.getInt("row_count");
+
+                        // Write to CSV
+                        writer.write(tableName + "," + rowCount + "\n");
+                    }
+                }
+                writer.close();
+                System.out.println("Extracted table names and row counts to CSV: tables_with_row_count.csv");
+
+                // Open the CSV file
+                openFile("tables_with_row_count.csv");
+            }
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void pgDumpTables(Connection conn, Scanner scanner) {
+        try {
+            System.out.print("Enter the table names (comma-separated): ");
+            String input = scanner.nextLine();
+            String[] tables = input.split(",");
+
+            for (String table : tables) {
+                String tableName = table.trim();
+                String command = "pg_dump -U " + USER + " -d " + DATABASE + " -t " + tableName + " > " + tableName + "_dump.txt";
+                Process process = Runtime.getRuntime().exec(command);
+                process.waitFor();
+            }
+            System.out.println("pg_dump completed for specified tables.");
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void insertQueriesForHardcodedTables(Connection conn, boolean firstFive) {
+        // Hardcoded table names
+        String[] tables = {"customers", "products"}; // Replace with your actual table names
+
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter("insert_queries.txt"))) {
+            for (String tableName : tables) {
+                String query = firstFive ?
+                        "SELECT * FROM \"" + tableName + "\" LIMIT 5" :
+                        "SELECT * FROM \"" + tableName + "\"";
+
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery(query)) {
+
+                    while (rs.next()) {
+                        StringBuilder insertQuery = new StringBuilder("INSERT INTO \"" + tableName + "\" (");
+                        StringBuilder values = new StringBuilder("VALUES (");
+
+                        int columnCount = rs.getMetaData().getColumnCount();
+                        for (int i = 1; i <= columnCount; i++) {
+                            insertQuery.append(rs.getMetaData().getColumnName(i));
+                            values.append("'" + rs.getString(i) + "'");
+
+                            if (i < columnCount) {
+                                insertQuery.append(", ");
+                                values.append(", ");
+                            }
+                        }
+                        insertQuery.append(") ");
+                        values.append(");\n");
+
+                        writer.write(insertQuery.toString() + values.toString());
+                    }
+                }
+            }
+            System.out.println("Generated insert queries to insert_queries.txt");
+
+            // Open the text file immediately after generation
+            openFile("insert_queries.txt");
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void executeSqlQuery(Connection conn, Scanner scanner) {
+        try {
+            System.out.print("Enter your SQL query: ");
+            String sql = scanner.nextLine();
+
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql);
+                 BufferedWriter writer = new BufferedWriter(new FileWriter("query_output.txt"))) {
+
+                int columnCount = rs.getMetaData().getColumnCount();
+                while (rs.next()) {
+                    StringBuilder row = new StringBuilder();
+                    for (int i = 1; i <= columnCount; i++) {
+                        row.append(rs.getString(i));
+                        if (i < columnCount) {
+                            row.append(", ");
+                        }
+                    }
+                    writer.write(row.toString() + "\n");
+                }
+                System.out.println("Query results saved to query_output.txt");
+            }
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void openFile(String filePath) {
+        try {
+            // Open the file using the default application
+            File file = new File(filePath);
+            if (file.exists()) {
+                java.awt.Desktop.getDesktop().open(file);
+            } else {
+                System.out.println("File does not exist: " + filePath);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
