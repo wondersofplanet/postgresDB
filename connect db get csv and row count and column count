@@ -1,3 +1,4 @@
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.Connection;
@@ -6,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class PostgresToCSV {
@@ -82,8 +84,16 @@ public class PostgresToCSV {
             String summaryFileName = "table_row_column_counts.csv";
             writeSummaryCSV(tableRowCounts, summaryFileName);
             System.out.println("Summary of table row and column counts saved to " + summaryFileName);
+            
+            // Create a sorted summary CSV by row count
+            String sortedSummaryFileName = "table_row_column_counts_sortedByrowcount.csv";
+            writeSortedSummaryCSV(tableRowCounts, sortedSummaryFileName);
+            System.out.println("Sorted summary of table row and column counts saved to " + sortedSummaryFileName);
 
-        } catch (SQLException | ClassNotFoundException e) {
+            // Open the folder where the CSV files are located
+            java.awt.Desktop.getDesktop().open(new File("."));
+
+        } catch (SQLException | ClassNotFoundException | IOException e) {
             e.printStackTrace();
         } finally {
             // Close the resources
@@ -128,6 +138,24 @@ public class PostgresToCSV {
 
     // Write the summary CSV file with table names, row counts, and column counts
     private static void writeSummaryCSV(List<String[]> tableRowCounts, String fileName) {
+        try (FileWriter fileWriter = new FileWriter(fileName)) {
+            // Write the header
+            fileWriter.append("Table,RowCount,ColumnCount\n");
+
+            // Write each table's name, row count, and column count
+            for (String[] row : tableRowCounts) {
+                fileWriter.append(row[0]).append(",").append(row[1]).append(",").append(row[2]).append("\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Write a sorted summary CSV file by row count
+    private static void writeSortedSummaryCSV(List<String[]> tableRowCounts, String fileName) {
+        // Sort the list based on row count (index 1)
+        tableRowCounts.sort(Comparator.comparingInt(row -> Integer.parseInt(row[1])));
+
         try (FileWriter fileWriter = new FileWriter(fileName)) {
             // Write the header
             fileWriter.append("Table,RowCount,ColumnCount\n");
