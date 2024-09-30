@@ -69,6 +69,8 @@ public class PostgresToCSV {
                 tableRowCounts.add(new String[]{table, String.valueOf(rowCount), String.valueOf(columnCount)});
 
                 // Generate the CSV file name based on the table name and row count
+
+// String fileName = table.split("\\.")[1] + ".csv";
                 String fileName = table + "_countofrows_" + rowCount + ".csv";
 
                 // Get table data and write to CSV
