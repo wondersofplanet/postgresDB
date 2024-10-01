@@ -10,14 +10,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-public class PostgresToCSV {
+public class OracleToCSV {
 
     // Connection parameters
     private static final String HOST = "localhost"; // Replace with your host
-    private static final String PORT = "5432";      // Replace with your port number
-    private static final String DATABASE = "postgres";  // Replace with your database name
-    private static final String USER = "postgres";  // Replace with your username
-    private static final String PASS = "admin";  // Replace with your password
+    private static final String PORT = "1521";      // Replace with your port number
+    private static final String SERVICE_NAME = "your_service_name"; // Replace with your service name
+    private static final String USER = "your_username";  // Replace with your username
+    private static final String PASS = "your_password";  // Replace with your password
 
     // Hardcoded table names
     private static final String[] TABLES = {"products", "customers", "orders"}; // Replace with your table names
@@ -27,17 +27,17 @@ public class PostgresToCSV {
         Statement statementForData = null;
         Statement statementForCount = null;
 
-        // List to hold table names, row counts, and column counts
+        // List to hold table names, row counts, column counts, BLOB counts, and CLOB counts
         List<String[]> tableRowCounts = new ArrayList<>();
 
         try {
-            // Load the PostgreSQL JDBC Driver
-            Class.forName("org.postgresql.Driver");
+            // Load the Oracle JDBC Driver
+            Class.forName("oracle.jdbc.driver.OracleDriver");
 
-            // Build the PostgreSQL connection URL dynamically
-            String dbUrl = "jdbc:postgresql://" + HOST + ":" + PORT + "/" + DATABASE;
+            // Build the Oracle connection URL dynamically, including service name
+            String dbUrl = "jdbc:oracle:thin:@" + HOST + ":" + PORT + "/" + SERVICE_NAME;
 
-            // Open connection to the PostgreSQL database
+            // Open connection to the Oracle database
             connection = DriverManager.getConnection(dbUrl, USER, PASS);
 
             // Loop through each table name
@@ -65,12 +65,24 @@ public class PostgresToCSV {
                 // Get the column count
                 int columnCount = dataResultSet.getMetaData().getColumnCount();
 
-                // Add the table name, row count, and column count to the list for the summary CSV
-                tableRowCounts.add(new String[]{table, String.valueOf(rowCount), String.valueOf(columnCount)});
+                // Get BLOB and CLOB counts
+                int blobCount = 0;
+                int clobCount = 0;
+
+                // Count BLOB and CLOB columns
+                for (int i = 1; i <= columnCount; i++) {
+                    String columnType = dataResultSet.getMetaData().getColumnTypeName(i);
+                    if ("BLOB".equalsIgnoreCase(columnType)) {
+                        blobCount++;
+                    } else if ("CLOB".equalsIgnoreCase(columnType)) {
+                        clobCount++;
+                    }
+                }
+
+                // Add the table name, row count, column count, blob count, and clob count to the list for the summary CSV
+                tableRowCounts.add(new String[]{table, String.valueOf(rowCount), String.valueOf(columnCount), String.valueOf(blobCount), String.valueOf(clobCount)});
 
                 // Generate the CSV file name based on the table name and row count
-
-// String fileName = table.split("\\.")[1] + ".csv";
                 String fileName = table + "_countofrows_" + rowCount + ".csv";
 
                 // Get table data and write to CSV
@@ -82,7 +94,7 @@ public class PostgresToCSV {
                 System.out.println("Data saved to " + fileName);
             }
 
-            // After processing all tables, create a summary CSV with table names, row counts, and column counts
+            // After processing all tables, create a summary CSV with table names, row counts, column counts, BLOB counts, and CLOB counts
             String summaryFileName = "table_row_column_counts.csv";
             writeSummaryCSV(tableRowCounts, summaryFileName);
             System.out.println("Summary of table row and column counts saved to " + summaryFileName);
@@ -138,15 +150,15 @@ public class PostgresToCSV {
         }
     }
 
-    // Write the summary CSV file with table names, row counts, and column counts
+    // Write the summary CSV file with table names, row counts, column counts, BLOB counts, and CLOB counts
     private static void writeSummaryCSV(List<String[]> tableRowCounts, String fileName) {
         try (FileWriter fileWriter = new FileWriter(fileName)) {
             // Write the header
-            fileWriter.append("Table,RowCount,ColumnCount\n");
+            fileWriter.append("Table,RowCount,ColumnCount,BLOBCount,CLOBCount\n");
 
             // Write each table's name, row count, and column count
             for (String[] row : tableRowCounts) {
-                fileWriter.append(row[0]).append(",").append(row[1]).append(",").append(row[2]).append("\n");
+                fileWriter.append(row[0]).append(",").append(row[1]).append(",").append(row[2]).append(",").append(row[3]).append(",").append(row[4]).append("\n");
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -160,11 +172,11 @@ public class PostgresToCSV {
 
         try (FileWriter fileWriter = new FileWriter(fileName)) {
             // Write the header
-            fileWriter.append("Table,RowCount,ColumnCount\n");
+            fileWriter.append("Table,RowCount,ColumnCount,BLOBCount,CLOBCount\n");
 
             // Write each table's name, row count, and column count
             for (String[] row : tableRowCounts) {
-                fileWriter.append(row[0]).append(",").append(row[1]).append(",").append(row[2]).append("\n");
+                fileWriter.append(row[0]).append(",").append(row[1]).append(",").append(row[2]).append(",").append(row[3]).append(",").append(row[4]).append("\n");
             }
         } catch (IOException e) {
             e.printStackTrace();
