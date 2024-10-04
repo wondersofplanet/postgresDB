@@ -1,0 +1,179 @@
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+public class PostgresToCSV {
+
+    // Connection parameters
+    private static final String HOST = "localhost"; // Replace with your host
+    private static final String PORT = "5432";      // Replace with your port number
+    private static final String DATABASE = "postgres";  // Replace with your database name
+    private static final String USER = "postgres";  // Replace with your username
+    private static final String PASS = "admin";  // Replace with your password
+
+    // Hardcoded table names (including example_table)
+    private static final String[] TABLES = {"products", "customers", "orders", "example_table"}; // Add 'example_table'
+
+    public static void main(String[] args) {
+        Connection connection = null;
+        Statement statementForData = null;
+        Statement statementForCount = null;
+
+        // List to hold table names, row counts, and column counts
+        List<String[]> tableRowCounts = new ArrayList<>();
+
+        try {
+            // Load the PostgreSQL JDBC Driver
+            Class.forName("org.postgresql.Driver");
+
+            // Build the PostgreSQL connection URL dynamically
+            String dbUrl = "jdbc:postgresql://" + HOST + ":" + PORT + "/" + DATABASE;
+
+            // Open connection to the PostgreSQL database
+            connection = DriverManager.getConnection(dbUrl, USER, PASS);
+
+            // Loop through each table name
+            for (String table : TABLES) {
+                System.out.println("Downloading data from table: " + table);
+
+                // Create separate statements for the data query and the row count query
+                statementForData = connection.createStatement();
+                statementForCount = connection.createStatement();
+
+                // Query to count the number of rows in the table
+                String countQuery = "SELECT COUNT(*) FROM " + table;
+                ResultSet countResultSet = statementForCount.executeQuery(countQuery);
+                int rowCount = 0;
+
+                if (countResultSet.next()) {
+                    rowCount = countResultSet.getInt(1); // Get the row count
+                }
+                countResultSet.close();  // Explicitly close the count ResultSet
+
+                // Query to get all rows from the table
+                String dataQuery = "SELECT * FROM " + table;
+                ResultSet dataResultSet = statementForData.executeQuery(dataQuery);
+
+                // Get the column count
+                int columnCount = dataResultSet.getMetaData().getColumnCount();
+
+                // Add the table name, row count, and column count to the list for the summary CSV
+                tableRowCounts.add(new String[]{table, String.valueOf(rowCount), String.valueOf(columnCount)});
+
+                // Generate the CSV file name based on the table name and row count
+                String fileName = table + "_countofrows_" + rowCount + ".csv";
+
+                // Get table data and write to CSV
+                writeToCSV(dataResultSet, fileName);
+
+                // Close the data ResultSet
+                dataResultSet.close();
+
+                System.out.println("Data saved to " + fileName);
+            }
+
+            // After processing all tables, create a summary CSV with table names, row counts, and column counts
+            String summaryFileName = "table_row_column_counts.csv";
+            writeSummaryCSV(tableRowCounts, summaryFileName);
+            System.out.println("Summary of table row and column counts saved to " + summaryFileName);
+            
+            // Create a sorted summary CSV by row count
+            String sortedSummaryFileName = "table_row_column_counts_sortedByrowcount.csv";
+            writeSortedSummaryCSV(tableRowCounts, sortedSummaryFileName);
+            System.out.println("Sorted summary of table row and column counts saved to " + sortedSummaryFileName);
+
+            // Open the folder where the CSV files are located
+            java.awt.Desktop.getDesktop().open(new File("."));
+
+        } catch (SQLException | ClassNotFoundException | IOException e) {
+            e.printStackTrace();
+        } finally {
+            // Close the resources
+            try {
+                if (statementForData != null) statementForData.close();
+                if (statementForCount != null) statementForCount.close();
+                if (connection != null) connection.close();
+            } catch (SQLException se) {
+                se.printStackTrace();
+            }
+        }
+    }
+
+    // Write the ResultSet data to a CSV file
+    private static void writeToCSV(ResultSet resultSet, String fileName) throws SQLException {
+        try (FileWriter fileWriter = new FileWriter(fileName)) {
+            int columnCount = resultSet.getMetaData().getColumnCount();
+
+            // Write the column headers
+            for (int i = 1; i <= columnCount; i++) {
+                fileWriter.append(resultSet.getMetaData().getColumnName(i));
+                if (i < columnCount) {
+                    fileWriter.append(",");
+                }
+            }
+            fileWriter.append("\n");
+
+            // Write the rows
+            while (resultSet.next()) {
+                for (int i = 1; i <= columnCount; i++) {
+                    String value = resultSet.getString(i);
+
+                    // Check if the value contains a comma, quote, or newline, and enclose it in double quotes if needed
+                    if (value != null && (value.contains(",") || value.contains("\"") || value.contains("\n"))) {
+                        // Escape any existing double quotes in the value by doubling them
+                        value = "\"" + value.replace("\"", "\"\"") + "\"";
+                    }
+
+                    fileWriter.append(value);
+                    if (i < columnCount) {
+                        fileWriter.append(",");
+                    }
+                }
+                fileWriter.append("\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Write the summary CSV file with table names, row counts, and column counts
+    private static void writeSummaryCSV(List<String[]> tableRowCounts, String fileName) {
+        try (FileWriter fileWriter = new FileWriter(fileName)) {
+            // Write the header
+            fileWriter.append("Table,RowCount,ColumnCount\n");
+
+            // Write each table's name, row count, and column count
+            for (String[] row : tableRowCounts) {
+                fileWriter.append(row[0]).append(",").append(row[1]).append(",").append(row[2]).append("\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Write a sorted summary CSV file by row count
+    private static void writeSortedSummaryCSV(List<String[]> tableRowCounts, String fileName) {
+        // Sort the list based on row count (index 1)
+        tableRowCounts.sort(Comparator.comparingInt(row -> Integer.parseInt(row[1])));
+
+        try (FileWriter fileWriter = new FileWriter(fileName)) {
+            // Write the header
+            fileWriter.append("Table,RowCount,ColumnCount\n");
+
+            // Write each table's name, row count, and column count
+            for (String[] row : tableRowCounts) {
+                fileWriter.append(row[0]).append(",").append(row[1]).append(",").append(row[2]).append("\n");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
