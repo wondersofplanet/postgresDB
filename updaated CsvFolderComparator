@@ -1,1 +1,223 @@
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
 
+public class CsvFolderComparator {
+
+    public static void main(String[] args) throws IOException {
+        // Update your folder paths
+        String folder1Path = "C:\\testfolfer\\IAMfolder1";
+        String folder2Path = "C:\\testfolfer\\THISISfolder2";
+        String outputCsvPath = "output.csv";  // Path for the output file
+        String summaryCsvPath = "summary.csv";  // Path for the summary file
+
+        File folder1 = new File(folder1Path);
+        File folder2 = new File(folder2Path);
+
+        // Get list of CSV files from both folders
+        File[] folder1Files = folder1.listFiles((dir, name) -> name.endsWith(".csv"));
+        File[] folder2Files = folder2.listFiles((dir, name) -> name.endsWith(".csv"));
+
+        // Set for matching file comparison
+        Set<String> folder1FileNames = new HashSet<>();
+        Set<String> folder2FileNames = new HashSet<>();
+
+        if (folder1Files != null) {
+            for (File file : folder1Files) {
+                folder1FileNames.add(file.getName());
+            }
+        }
+
+        if (folder2Files != null) {
+            for (File file : folder2Files) {
+                folder2FileNames.add(file.getName());
+            }
+        }
+
+        // Set up writers for output and summary
+        try (BufferedWriter outputWriter = new BufferedWriter(new FileWriter(outputCsvPath));
+             BufferedWriter summaryWriter = new BufferedWriter(new FileWriter(summaryCsvPath))) {
+
+            List<String> matchingFiles = new ArrayList<>();
+            List<String> dataDifferenceFiles = new ArrayList<>();
+            List<String> columnDifferenceFiles = new ArrayList<>();
+            List<String> rowMismatchFiles = new ArrayList<>();
+
+            for (String csvFileName : folder1FileNames) {
+                if (folder2FileNames.contains(csvFileName)) {
+                    // Both folders have the file, so compare them
+                    compareCsvFiles(csvFileName, folder1Path, folder2Path, outputWriter, summaryWriter, matchingFiles, dataDifferenceFiles, columnDifferenceFiles, rowMismatchFiles);
+                } else {
+                    // File is present in folder1 but not in folder2
+                    outputWriter.write("\n=====================================\n");
+                    outputWriter.write(csvFileName + " is present in " + folder1Path + " but not in " + folder2Path + "\n");
+                    outputWriter.write("\n\n");  // Adding extra spacing for better readability
+                }
+            }
+
+            // Check for files present in folder2 but not in folder1
+            for (String csvFileName : folder2FileNames) {
+                if (!folder1FileNames.contains(csvFileName)) {
+                    outputWriter.write("\n=====================================\n");
+                    outputWriter.write(csvFileName + " is present in " + folder2Path + " but not in " + folder1Path + "\n");
+                    outputWriter.write("\n\n");  // Adding extra spacing for better readability
+                }
+            }
+
+            // Write summary information with one CSV per line
+            summaryWriter.write("Summary Report:\n\n");
+            summaryWriter.write("1) Count of matching CSVs: " + matchingFiles.size() + "\n");
+            summaryWriter.write("List of matching CSVs:\n");
+            for (String file : matchingFiles) {
+                summaryWriter.write(file + "\n");
+            }
+            summaryWriter.write("\n");
+
+            summaryWriter.write("2) Count of CSVs with data differences: " + dataDifferenceFiles.size() + "\n");
+            summaryWriter.write("List of CSVs with data differences:\n");
+            for (String file : dataDifferenceFiles) {
+                summaryWriter.write(file + "\n");
+            }
+            summaryWriter.write("\n");
+
+            summaryWriter.write("3) Count of CSVs with column differences: " + columnDifferenceFiles.size() + "\n");
+            summaryWriter.write("List of CSVs with column differences:\n");
+            for (String file : columnDifferenceFiles) {
+                summaryWriter.write(file + "\n");
+            }
+            summaryWriter.write("\n");
+
+            summaryWriter.write("4) Count of CSVs with first row mismatches (column order issues): " + rowMismatchFiles.size() + "\n");
+            summaryWriter.write("List of CSVs with first row mismatches:\n");
+            for (String file : rowMismatchFiles) {
+                summaryWriter.write(file + "\n");
+            }
+        }
+        System.out.println("Comparison completed. Results are saved output.csv and summary.csv");
+    }
+
+    // Function to compare CSV files
+    public static void compareCsvFiles(String csvFileName, String folder1Path, String folder2Path, BufferedWriter outputWriter,
+                                       BufferedWriter summaryWriter, List<String> matchingFiles, List<String> dataDifferenceFiles,
+                                       List<String> columnDifferenceFiles, List<String> rowMismatchFiles) throws IOException {
+
+        String folder1FilePath = folder1Path + "\\" + csvFileName;
+        String folder2FilePath = folder2Path + "\\" + csvFileName;
+
+        List<String[]> folder1Rows = readCsvFile(folder1FilePath);
+        List<String[]> folder2Rows = readCsvFile(folder2FilePath);
+
+        int folder1RowCount = folder1Rows.size();
+        int folder2RowCount = folder2Rows.size();
+        int folder1ColCount = folder1Rows.get(0).length;
+        int folder2ColCount = folder2Rows.get(0).length;
+
+        // Get the folder names from the folder paths
+        String folder1Name = Paths.get(folder1Path).getFileName().toString();
+        String folder2Name = Paths.get(folder2Path).getFileName().toString();
+
+        // Improve output readability
+        outputWriter.write("\n=====================================\n");  // Add separator line
+        outputWriter.write("Comparing CSV file: " + csvFileName + "\n");
+        outputWriter.write("-------------------------------------\n");
+
+        // Use vertical bar | instead of commas to avoid CSV issues
+        outputWriter.write("Number of rows | columns in " + csvFileName + " in " + folder1Name + ": " + folder1RowCount + " rows | " + folder1ColCount + " columns\n");
+        outputWriter.write("Number of rows | columns in " + csvFileName + " in " + folder2Name + ": " + folder2RowCount + " rows | " + folder2ColCount + " columns\n");
+
+        // Add extra spacing for readability
+        outputWriter.write("\n\n");
+
+        // Check if the number of columns match
+        if (folder1ColCount != folder2ColCount) {
+            outputWriter.write("Column count does not match. Skipping " + csvFileName + "\n");
+            columnDifferenceFiles.add(csvFileName);
+            outputWriter.write("\n\n");  // Adding extra spacing
+            return;
+        }
+
+        // Check if the first row matches (column names)
+        if (!Arrays.equals(folder1Rows.get(0), folder2Rows.get(0))) {
+            outputWriter.write("First row (column names) do not match. Skipping " + csvFileName + "\n");
+            rowMismatchFiles.add(csvFileName);
+            outputWriter.write("\n\n");  // Adding extra spacing
+            return;
+        }
+
+        // Perform data comparison
+        Set<String> folder1RowSet = new HashSet<>(convertRowsToStringList(folder1Rows));
+        Set<String> folder2RowSet = new HashSet<>(convertRowsToStringList(folder2Rows));
+
+        Set<String> folder1OnlyRows = new HashSet<>(folder1RowSet);
+        folder1OnlyRows.removeAll(folder2RowSet);
+
+        Set<String> folder2OnlyRows = new HashSet<>(folder2RowSet);
+        folder2OnlyRows.removeAll(folder1RowSet);
+
+        if (folder1OnlyRows.isEmpty() && folder2OnlyRows.isEmpty()) {
+            outputWriter.write("All rows match in " + csvFileName + "\n");
+            matchingFiles.add(csvFileName);
+        } else {
+            outputWriter.write("Rows present in " + csvFileName + " in " + folder1Name + " but not in " + folder2Name + ":\n");
+            for (String row : folder1OnlyRows) {
+                outputWriter.write(row + "\n");
+            }
+
+            outputWriter.write("\n");  // Adding extra spacing
+
+            outputWriter.write("Rows present in " + csvFileName + " in " + folder2Name + " but not in " + folder1Name + ":\n");
+            for (String row : folder2OnlyRows) {
+                outputWriter.write(row + "\n");
+            }
+
+            dataDifferenceFiles.add(csvFileName);
+        }
+
+        // Add final spacing after each CSV comparison
+        outputWriter.write("\n\n");
+       
+    }
+
+ // Helper function to read CSV file
+    public static List<String[]> readCsvFile(String filePath) throws IOException {
+        List<String[]> rows = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                // Split the line on commas, but respect quotes
+                String[] values = parseCsvLine(line);
+                rows.add(values);
+            }
+        }
+        return rows;
+    }
+    
+ // Helper function to parse a CSV line
+    public static String[] parseCsvLine(String line) {
+        List<String> values = new ArrayList<>();
+        StringBuilder currentValue = new StringBuilder();
+        boolean insideQuotes = false;
+
+        for (char c : line.toCharArray()) {
+            if (c == '"') {
+                insideQuotes = !insideQuotes; // Toggle quotes
+            } else if (c == ',' && !insideQuotes) {
+                values.add(currentValue.toString().trim());
+                currentValue.setLength(0); // Clear current value
+            } else {
+                currentValue.append(c);
+            }
+        }
+        // Add the last value
+        values.add(currentValue.toString().trim());
+        return values.toArray(new String[0]);
+    }
+    // Helper function to convert CSV rows to string format
+    public static List<String> convertRowsToStringList(List<String[]> rows) {
+        List<String> result = new ArrayList<>();
+        for (String[] row : rows) {
+            result.add(Arrays.toString(row));
+        }
+        return result;
+    }
+}
